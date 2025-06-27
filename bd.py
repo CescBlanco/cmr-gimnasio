@@ -2,10 +2,6 @@ import os
 import mysql.connector
 from datetime import datetime
 
-import os
-import mysql.connector
-from datetime import datetime
-
 # Cargar variables de entorno desde .env si existe
 try:
     from dotenv import load_dotenv
@@ -30,6 +26,7 @@ conexion = mysql.connector.connect(
 )
 cursor = conexion.cursor()
 
+
 # Generate invoice code in the format: january_2025_1
 def generate_invoice_code():
     """
@@ -51,7 +48,7 @@ def generate_invoice_code():
     return f"{month}_{year}_{total}"
 
 # Clientes
-def agregar_cliente(nombre, apellidos, email, telefono, direccion):
+def add_client( nombre, apellidos, email, telefono, direccion):
     """
     Adds a new client to the 'clientes' table in the database.
 
@@ -67,10 +64,11 @@ def agregar_cliente(nombre, apellidos, email, telefono, direccion):
     cursor.execute("""
         INSERT INTO clientes (nombre, apellidos, email, telefono, direccion)
         VALUES (%s, %s, %s, %s, %s)
-    """, (nombre, apellidos, email, telefono, direccion))
+    """, ( nombre, apellidos, email, telefono, direccion))
     conexion.commit()
+    return cursor.lastrowid 
 
-def buscar_cliente(email):
+def find_client(email):
     """
     Searches for a client in the 'clientes' table by their email address.
 
@@ -83,7 +81,11 @@ def buscar_cliente(email):
     cursor.execute("SELECT * FROM clientes WHERE email = %s", (email,))
     return cursor.fetchone()
 
-def obtener_clientes():
+def find_client_by_name(nombre):
+    cursor.execute("SELECT * FROM clientes WHERE nombre LIKE %s", (f"%{nombre}%",))
+    return cursor.fetchall()
+
+def get_clients():
     """
     Fetches all clients from the 'clientes' table.
 
@@ -94,27 +96,49 @@ def obtener_clientes():
             - apellidos (str): The last name(s) of the client.
             - email (str): The email address of the client.
     """
-    cursor.execute("SELECT id_cliente, nombre, apellidos, email FROM clientes")
+    cursor.execute("SELECT * FROM clientes")
     return cursor.fetchall()
 
-def eliminar_cliente(email):
+def delete_invoce_by_client(id_cliente):
     """
-    Deletes a client from the 'clientes' table in the database based on the provided email address.
+    Deletes all invoices associated with a given client ID from the 'facturas' table.
 
     Args:
-        email (str): The email address of the client to be deleted.
+        id_cliente (int): The unique identifier of the client whose invoices will be deleted.
+
+    Side Effects:
+        Removes all invoice records for the specified client from the database.
+        Commits the transaction.
+    """
+    cursor.execute("DELETE FROM facturas WHERE id_cliente = %s", (id_cliente,))
+    conexion.commit()
+
+def delete_client_by_email(email):
+    """
+    Deletes a client from the 'clientes' table by their email address.
+
+    Args:
+        email (str): The email address of the client to delete.
 
     Returns:
-        None
+        bool: True if the client was found and deleted, False otherwise.
 
-    Raises:
-        Exception: If the database operation fails.
+    Side Effects:
+        - Deletes all invoices associated with the client.
+        - Removes the client record from the database.
+        - Commits the transaction.
     """
+    cliente = find_client(email)
+    if not cliente:
+        return False
+
+    delete_invoce_by_client(cliente[0])  # First delete the invoices
     cursor.execute("DELETE FROM clientes WHERE email = %s", (email,))
     conexion.commit()
+    return True
     
-# Facturas
-def crear_factura(id_cliente, descripcion, monto, estado):
+# INVOCES
+def create_invoice(id_cliente, descripcion, monto, estado):
     """
     Creates a new invoice record in the database for a given client.
 
@@ -138,20 +162,53 @@ def crear_factura(id_cliente, descripcion, monto, estado):
         VALUES (%s, %s, %s, %s, %s)
     """, (id_cliente, descripcion, monto, estado, codigo))
     conexion.commit()
-    print(f"Factura creada con código: {codigo}")
+    return codigo
 
-def facturas_de_cliente(id_cliente):
+def client_invoices(id_cliente):
     """
-    Retrieves all invoices associated with a specific client.
+    Retrieves all invoices for a given client by their ID.
 
     Args:
-        id_cliente (int): The unique identifier of the client whose invoices are to be fetched.
+        id_cliente (int): The unique identifier of the client.
 
     Returns:
-        list of tuple: A list of tuples, each containing the invoice code, description, amount, and status for the specified client.
+        list of tuple: A list of tuples, each containing:
+            - codigo_factura (str): The invoice code.
+            - descripcion (str): The invoice description.
+            - monto (float): The invoice amount.
+            - estado (str): The invoice status.
+            - fecha_emision (datetime): The invoice issue date.
     """
     cursor.execute("""
-        SELECT codigo_factura, descripcion, monto, estado 
+        SELECT codigo_factura, descripcion, monto, estado, fecha_emision
         FROM facturas WHERE id_cliente = %s
     """, (id_cliente,))
+    return cursor.fetchall()
+
+def financial_summary():
+    """
+    Retrieves a financial summary for each client, including:
+        - Client's first name, last name, and email.
+        - Total number of invoices.
+        - Total amount invoiced.
+        - Total amount of paid invoices.
+        - Total amount of pending invoices.
+
+    Returns:
+        list of tuple: Each tuple contains the above information for a client.
+    """
+    consulta = """
+    SELECT 
+        c.nombre,
+        c.apellidos,
+        c.email,
+        COUNT(f.id_factura) AS total_facturas,
+        COALESCE(SUM(f.monto), 0) AS monto_total,
+        COALESCE(SUM(CASE WHEN f.estado = 'Pagada' THEN f.monto ELSE 0 END), 0) AS pagadas,
+        COALESCE(SUM(CASE WHEN f.estado = 'Pendiente' THEN f.monto ELSE 0 END), 0) AS pendientes
+    FROM clientes c
+    LEFT JOIN facturas f ON c.id_cliente = f.id_cliente
+    GROUP BY c.id_cliente
+    """
+    cursor.execute(consulta)
     return cursor.fetchall()
