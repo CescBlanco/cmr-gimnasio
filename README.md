@@ -44,7 +44,7 @@ Este CRM permite registrar, consultar, eliminar clientes y gestionar facturas as
 1. Clona el repositorio:
 
 ```bash
-git clone https://github.com/CescBlanco/cmr-gimnasio.git
+git clone https://github.com/CescBlanco/crm-gimnasio.git
 ```
 2. (Opcional) Crea un entorno virtual:
 
@@ -69,7 +69,7 @@ pip install -r requirements.txt
 ## Estructura del proyecto
 
 ```plaintext
-cmr-gimnasio/
+crm-gimnasio/
     ├── bd.py                # Acceso y operaciones con la base de datos
     ├── crear_base_datos.sql # Script SQL para crear la base de datos y 
     ├── logica.py            # Lógica de negocio y validaciones
